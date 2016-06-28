@@ -7,12 +7,17 @@ var Socket = Primus.createSocket({
     "primus-spark-latency": require("primus-spark-latency")
   }
 });
-var client = new Socket("http://localhost:3000");
 
-client.send("server-init", {});
+module.exports = {
+  startServer(serverUrl, displayIds, frequency) {
+    var client = new Socket(serverUrl);
 
-setInterval(function () {
-  var displayId = Math.random() < 0.5 ? "AAA" : "BBB";
+    client.send("server-init", {});
 
-  client.send("server-message", { displayId: displayId, message: "Message" });
-}, 1000);
+    setInterval(function () {
+      var displayId = displayIds[Math.floor(Math.random() * displayIds.length)];
+
+      client.send("server-message", { displayId: displayId, message: "Message to " + displayId });
+    }, Math.floor(1000 / frequency));
+  }
+};

@@ -27,9 +27,7 @@ primus.on("disconnection", function(spark) {
 });
 
 primus.on("connection", function(spark) {
-  console.log("on conn");
   spark.on("server-init", function () {
-    console.log("server init");
     if(displayServer) {
       displayServer.end();
     }
@@ -38,7 +36,6 @@ primus.on("connection", function(spark) {
   });
 
   spark.on("display-init", function (data) {
-    console.log("server init");
     if(data.displayId) {
       if(displaysById[data.displayId]) {
         displaysById[data.displayId].end();
@@ -50,7 +47,6 @@ primus.on("connection", function(spark) {
   });
 
   spark.on("server-message", function(data) {
-    console.log("server message", data);
     if(data.displayId) {
       if(displaysById[data.displayId]) {
         displaysById[data.displayId].send("message", data);
