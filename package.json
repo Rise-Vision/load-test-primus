@@ -1,0 +1,17 @@
+{
+  "name": "load-test-primus",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Node.js Primus/SockJS Server",
+  "dependencies": {
+    "forever-monitor": "1.5.2",
+
+    "primus": "5.2.2",
+    "primus-emitter": "3.1.1",
+    "primus-spark-latency": "0.1.1",
+    "sockjs": "0.3.17",
+    "sockjs-client": "1.1.1",
+
+    "gcloud": "0.36.0"
+  }
+}
