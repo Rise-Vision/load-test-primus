@@ -5,12 +5,12 @@ var emitter = require("primus-emitter");
 var latency = require("primus-spark-latency");
 var http = require("http");
 var server = http.createServer();
-var storage = require("./storage.js");
+var redis = require("./redis.js");
 var displayServer = null;
 var displaysById = {};
 var displaysBySpark = {};
 
-return storage.init()
+return redis.init()
 .then(startPrimus)
 .then(registerPrimusEventListeners)
 .then(startServer)
@@ -58,13 +58,14 @@ function registerPrimusEventListeners(primus) {
         displaysById[data.displayId] = spark;
         displaysBySpark[spark] = data.displayId;
 
-        loadGCSMessages(data.displayId).then((messages)=>{
+        loadQueuedMessages(data.displayId).then((messages)=>{
           messages.forEach((message)=>{
             spark.send("message", message);
           });
 
           if(messages.length > 0) {
-            return clearGCSMessages(data.displayId);
+            console.log("Sent pending messages to: " + data.displayId + " - " + messages);
+            return clearQueuedMessages(data.displayId);
           }
         });
       }
@@ -76,44 +77,30 @@ function registerPrimusEventListeners(primus) {
           displaysById[data.displayId].send("message", data.message);
         }
         else {
-          appendGCSMessage(data.displayId, data.message);
+          enqueueMessage(data.displayId, data.message);
         }
       }
     });
   });
 }
 
-function appendGCSMessage(displayId, message) {
-  var fileName = displayId + ".json";
-
-  return storage.readFile(fileName, true)
-  .then((contents)=>{
-    var json = contents.trim() ? JSON.parse(contents) : [];
-
-    var messages = Array.isArray(json) ? json : [];
-    messages.push(message);
-
-    console.log("Saving", fileName, JSON.stringify(messages));
-
-    return storage.saveFile(fileName, JSON.stringify(messages));
-  })
+function enqueueMessage(displayId, message) {
+  return redis.saveMessage(displayId, message)
   .catch((err)=>{
     console.log("Error saving messages", displayId, err);
   });
 }
 
-function loadGCSMessages(displayId) {
-  return storage.readFile(displayId + ".json", true)
-  .then((contents)=>{
-    return contents.trim() ? JSON.parse(contents) : [];
-  })
+function loadQueuedMessages(displayId) {
+  return redis.readMessages(displayId)
   .catch((err)=>{
     console.log("Error loading messages", displayId, err);
+    return [];
   });
 }
 
-function clearGCSMessages(displayId) {
-  return storage.deleteFile(displayId + ".json", true)
+function clearQueuedMessages(displayId) {
+  return redis.clearMessages(displayId)
   .catch((err)=>{
     console.log("Error deleting messages", displayId, err);
   });
