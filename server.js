@@ -9,6 +9,8 @@ var storage = require("./storage.js");
 var displayServer = null;
 var displaysById = {};
 var displaysBySpark = {};
+var pendingMessages = {};
+var pendingTasks = {};
 
 return storage.init()
 .then(startPrimus)
@@ -83,7 +85,22 @@ function registerPrimusEventListeners(primus) {
   });
 }
 
-function appendGCSMessage(displayId, message) {
+function processPendingMessages(displayId) {
+  if(pendingMessages[displayId] && pendingMessages[displayId].length > 0) {
+    var messages = pendingMessages[displayId].splice(0, pendingMessages[displayId].length);
+
+    saveGCSMessages(displayId, messages).then(()=>{
+      if(pendingMessages[displayId].length > 0) {
+        processPendingMessages(displayId);
+      }
+      else {
+        delete pendingMessages[displayId];
+      }
+    });
+  }
+}
+
+function saveGCSMessages(displayId, newMessages) {
   var fileName = displayId + ".json";
 
   return storage.readFile(fileName, true)
@@ -91,7 +108,7 @@ function appendGCSMessage(displayId, message) {
     var json = contents.trim() ? JSON.parse(contents) : [];
 
     var messages = Array.isArray(json) ? json : [];
-    messages.push(message);
+    messages = messages.concat(newMessages);
 
     console.log("Saving", fileName, JSON.stringify(messages));
 
@@ -100,6 +117,16 @@ function appendGCSMessage(displayId, message) {
   .catch((err)=>{
     console.log("Error saving messages", displayId, err);
   });
+}
+
+function appendGCSMessage(displayId, message) {
+  if(pendingMessages[displayId]) {
+    pendingMessages[displayId].push(message);
+  }
+  else {
+    pendingMessages[displayId] = [message];
+    processPendingMessages(displayId);
+  }
 }
 
 function loadGCSMessages(displayId) {
