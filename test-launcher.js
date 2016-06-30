@@ -3,7 +3,7 @@ var fakeDisplay = require("./fake-display.js");
 var serverUrl = "http://localhost:3000";
 var displayIds = generateDisplayIds(10);
 
-displayIds.filter(()=>{ return Math.random() < 0; }).forEach((displayId) => {
+displayIds.filter(()=>{ return Math.random() < 0.9; }).forEach((displayId) => {
   fakeDisplay.startDisplay(serverUrl, displayId);
 });
 

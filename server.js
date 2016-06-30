@@ -30,19 +30,23 @@ function startPrimus() {
 }
 
 function registerPrimusEventListeners(primus) {
-  primus.on("disconnection", function(spark) {
-    if(spark === displayServer) {
-      displayServer = null;
-    }
-    else if(displaysBySpark[spark]) {
-      var displayId = displaysBySpark[spark];
-
-      delete displaysById[displayId];
-      delete displaysBySpark[spark];
-    }
-  });
-
   primus.on("connection", function(spark) {
+    spark.on("end", function() {
+      if(spark === displayServer) {
+        displayServer = null;
+      }
+      else if(displaysBySpark[spark.id]) {
+        console.log("Removing client spark");
+        var displayId = displaysBySpark[spark.id];
+
+        delete displaysById[displayId];
+        delete displaysBySpark[spark.id];
+      }
+      else {
+        console.log("No client spark found");
+      }
+    });
+
     spark.on("server-init", function () {
       if(displayServer) {
         displayServer.end();
@@ -53,12 +57,8 @@ function registerPrimusEventListeners(primus) {
 
     spark.on("display-init", function (data) {
       if(data.displayId) {
-        if(displaysById[data.displayId]) {
-          displaysById[data.displayId].end();
-        }
-
         displaysById[data.displayId] = spark;
-        displaysBySpark[spark] = data.displayId;
+        displaysBySpark[spark.id] = data.displayId;
 
         loadGCSMessages(data.displayId).then((messages)=>{
           messages.forEach((message)=>{
@@ -85,18 +85,41 @@ function registerPrimusEventListeners(primus) {
   });
 }
 
+function appendGCSMessage(displayId, message) {
+  if(pendingMessages[displayId]) {
+    pendingMessages[displayId].push(message);
+  }
+  else {
+    pendingMessages[displayId] = [message];
+  }
+
+  enqueueTask(displayId, processPendingMessages.bind(null, displayId));
+}
+
+function loadGCSMessages(displayId) {
+  return storage.readFile(displayId + ".json", true)
+  .then((contents)=>{
+    return contents.trim() ? JSON.parse(contents) : [];
+  })
+  .catch((err)=>{
+    console.log("Error loading messages", displayId, err);
+  });
+}
+
+function clearGCSMessages(displayId) {
+  enqueueTask(displayId, function() {
+    return storage.deleteFile(displayId + ".json", true)
+    .catch((err)=>{
+      console.log("Error deleting messages", displayId, err);
+    });
+  });
+}
+
 function processPendingMessages(displayId) {
   if(pendingMessages[displayId] && pendingMessages[displayId].length > 0) {
     var messages = pendingMessages[displayId].splice(0, pendingMessages[displayId].length);
 
-    saveGCSMessages(displayId, messages).then(()=>{
-      if(pendingMessages[displayId].length > 0) {
-        processPendingMessages(displayId);
-      }
-      else {
-        delete pendingMessages[displayId];
-      }
-    });
+    return saveGCSMessages(displayId, messages);
   }
 }
 
@@ -115,35 +138,38 @@ function saveGCSMessages(displayId, newMessages) {
     return storage.saveFile(fileName, JSON.stringify(messages));
   })
   .catch((err)=>{
-    console.log("Error saving messages", displayId, err);
+    console.log("Error saving messages", displayId, err, newMessages);
   });
 }
 
-function appendGCSMessage(displayId, message) {
-  if(pendingMessages[displayId]) {
-    pendingMessages[displayId].push(message);
+function enqueueTask(displayId, task) {
+  if(pendingTasks[displayId]) {
+    pendingTasks[displayId].push(task);
   }
   else {
-    pendingMessages[displayId] = [message];
-    processPendingMessages(displayId);
+    pendingTasks[displayId] = [task];
+    return runNextTask(displayId);
   }
 }
 
-function loadGCSMessages(displayId) {
-  return storage.readFile(displayId + ".json", true)
-  .then((contents)=>{
-    return contents.trim() ? JSON.parse(contents) : [];
-  })
-  .catch((err)=>{
-    console.log("Error loading messages", displayId, err);
-  });
-}
+function runNextTask(displayId) {
+  if(pendingTasks[displayId] && pendingTasks[displayId].length > 0) {
+    var task = pendingTasks[displayId].shift();
 
-function clearGCSMessages(displayId) {
-  return storage.deleteFile(displayId + ".json", true)
-  .catch((err)=>{
-    console.log("Error deleting messages", displayId, err);
-  });
+    return Promise.resolve()
+    .then(task)
+    .catch((err)=>{
+      console.log("Error running task", err);
+    })
+    .then(()=>{
+      if(pendingTasks[displayId].length === 0) {
+        delete pendingTasks[displayId];
+      }
+      else {
+        return runNextTask(displayId);
+      }
+    });
+  }
 }
 
 function startServer() {
