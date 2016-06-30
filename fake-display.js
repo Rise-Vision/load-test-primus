@@ -15,7 +15,7 @@ module.exports = {
     client.send("display-init", { displayId: displayId });
 
     client.on("message", function(data) {
-      console.log("message received", data);
+      console.log("Received by: " + displayId + " - " + data);
     });
   }
 };

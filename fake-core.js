@@ -11,13 +11,14 @@ var Socket = Primus.createSocket({
 module.exports = {
   startServer(serverUrl, displayIds, frequency) {
     var client = new Socket(serverUrl);
+    var messageCount = 0;
 
     client.send("server-init", {});
 
     setInterval(function () {
       var displayId = displayIds[Math.floor(Math.random() * displayIds.length)];
 
-      client.send("server-message", { displayId: displayId, message: "Message to " + displayId });
+      client.send("server-message", { displayId: displayId, message: "Message: " + (++messageCount) });
     }, Math.floor(1000 / frequency));
   }
 };

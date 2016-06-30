@@ -1,13 +1,13 @@
 var fakeCore = require("./fake-core.js");
 var fakeDisplay = require("./fake-display.js");
 var serverUrl = "http://localhost:3000";
-var displayIds = generateDisplayIds(500);
+var displayIds = generateDisplayIds(10);
 
-displayIds.forEach((displayId) => {
+displayIds.filter(()=>{ return Math.random() <= 0.9; }).forEach((displayId) => {
   fakeDisplay.startDisplay(serverUrl, displayId);
 });
 
-fakeCore.startServer(serverUrl, displayIds, 1000);
+fakeCore.startServer(serverUrl, displayIds, 10);
 
 function generateDisplayIds(count) {
   var displayIds = [];
