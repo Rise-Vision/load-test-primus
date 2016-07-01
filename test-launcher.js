@@ -1,18 +1,23 @@
 var fakeCore = require("./fake-core.js");
 var fakeDisplay = require("./fake-display.js");
-var serverUrl = "http://localhost:3000";
-var displayIds = generateDisplayIds(10);
+var argv = require("yargs")
+  .default({ from: 0, count: 10, msgPerSec: 10, offlinePct: 10, serverUrl: "http://messaging-server-instance-1:3000" })
+  .argv;
+var serverUrl = argv.serverUrl;
+var displayIds = generateDisplayIds(argv.from, argv.count);
 
-displayIds.filter(()=>{ return Math.random() < 0.9; }).forEach((displayId) => {
-  fakeDisplay.startDisplay(serverUrl, displayId);
-});
+displayIds
+  .filter(()=>{ return Math.random() < (100 - argv.offlinePct) / 100; })
+  .forEach((displayId) => {
+    fakeDisplay.startDisplay(serverUrl, displayId);
+  });
 
-fakeCore.startServer(serverUrl, displayIds, 10);
+fakeCore.startServer(serverUrl, displayIds, argv.msgPerSec);
 
-function generateDisplayIds(count) {
+function generateDisplayIds(from, count) {
   var displayIds = [];
 
-  for(var i = 0; i < count; i++) {
+  for(var i = from; i < from + count; i++) {
     var id = "";
     var letterCount = 26;
     var rem = i % letterCount;
