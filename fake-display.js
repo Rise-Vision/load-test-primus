@@ -12,7 +12,9 @@ module.exports = {
   startDisplay(serverUrl, displayId) {
     var client = new Socket(serverUrl);
 
-    client.send("display-init", { displayId: displayId });
+    client.on("open", ()=>{
+      client.send("display-init", { displayId: displayId });
+    });
 
     client.on("message", function(data) {
       console.log("Received by: " + displayId + " - " + data);
