@@ -18,6 +18,7 @@ var stats = {
   disconnectedClients: 0,
   unknownDisconnectedClients: 0,
   newErrors: 0,
+  newGCSErrors: 0,
   sentMessages: 0,
   savedMessagesSent: 0,
   savedMessages: 0
@@ -80,16 +81,7 @@ function registerPrimusEventListeners(primus) {
         displaysById[data.displayId] = spark;
         displaysBySpark[spark.id] = data.displayId;
 
-        loadGCSMessages(data.displayId).then((messages)=>{
-          messages.forEach((message)=>{
-            stats.savedMessagesSent++;
-            spark.send("message", message);
-          });
-
-          if(messages.length > 0) {
-            return clearGCSMessages(data.displayId);
-          }
-        });
+        enqueueTask(data.displayId, sendSavedMessages.bind(null, data.displayId, 3));
       }
     });
 
@@ -112,7 +104,7 @@ function startStats() {
   setInterval(function () {
     var currStats = [
       stats.clients, stats.newClients, stats.disconnectedClients, stats.unknownDisconnectedClients,
-      stats.newErrors, stats.sentMessages, stats.savedMessagesSent, stats.savedMessages
+      stats.newErrors, stats.newGCSErrors, stats.sentMessages, stats.savedMessagesSent, stats.savedMessages
     ].join(",");
 
     console.log(JSON.stringify(stats));
@@ -121,6 +113,7 @@ function startStats() {
     stats.disconnectedClients = 0;
     stats.unknownDisconnectedClients = 0;
     stats.newErrors = 0;
+    stats.newGCSErrors = 0;
     stats.sentMessages = 0;
     stats.savedMessagesSent = 0;
     stats.savedMessages = 0;
@@ -142,31 +135,43 @@ function appendGCSMessage(displayId, message) {
   enqueueTask(displayId, processPendingMessages.bind(null, displayId));
 }
 
-function loadGCSMessages(displayId) {
-  return storage.readFile(displayId + ".json", true)
-  .then((contents)=>{
-    return contents.trim() ? JSON.parse(contents) : [];
-  })
-  .catch((err)=>{
-    console.log("Error loading messages", displayId, err);
-  });
-}
-
-function clearGCSMessages(displayId) {
-  enqueueTask(displayId, function() {
-    return storage.deleteFile(displayId + ".json", true)
-    .catch((err)=>{
-      console.log("Error deleting messages", displayId, err);
-    });
-  });
-}
-
 function processPendingMessages(displayId) {
   if(pendingMessages[displayId] && pendingMessages[displayId].length > 0) {
     var messages = pendingMessages[displayId].splice(0, pendingMessages[displayId].length);
 
     return saveGCSMessages(displayId, messages);
   }
+}
+
+function sendSavedMessages(displayId, retries) {
+  var fileName = displayId + ".json";
+
+  return storage.readFile(fileName, true)
+  .then((contents)=>{
+    return contents.trim() ? JSON.parse(contents) : [];
+  })
+  .then((messages)=>{
+    if(displaysById[displayId]) {
+      var spark = displaysById[displayId];
+
+      messages.forEach((message)=>{
+        stats.savedMessagesSent++;
+        spark.send("message", message);
+      });
+
+      return storage.deleteFile(fileName, true);
+    }
+  })
+  .catch((err)=>{
+    stats.newGCSErrors++;
+
+    if(--retries > 0) {
+      enqueueTask(displayId, sendSavedMessages.bind(null, displayId, retries));
+    }
+    else {
+      console.log("Error loading messages", displayId, err);
+    }
+  });
 }
 
 function saveGCSMessages(displayId, newMessages) {
@@ -182,6 +187,7 @@ function saveGCSMessages(displayId, newMessages) {
     return storage.saveFile(fileName, JSON.stringify(messages));
   })
   .catch((err)=>{
+    stats.newGCSErrors++;
     console.log("Error saving messages", displayId, err, newMessages);
   });
 }
