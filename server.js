@@ -139,7 +139,7 @@ function processPendingMessages(displayId) {
   if(pendingMessages[displayId] && pendingMessages[displayId].length > 0) {
     var messages = pendingMessages[displayId].splice(0, pendingMessages[displayId].length);
 
-    return saveGCSMessages(displayId, messages);
+    return saveGCSMessages(displayId, messages, 3);
   }
 }
 
@@ -174,7 +174,7 @@ function sendSavedMessages(displayId, retries) {
   });
 }
 
-function saveGCSMessages(displayId, newMessages) {
+function saveGCSMessages(displayId, newMessages, retries) {
   var fileName = displayId + ".json";
 
   return storage.readFile(fileName, true)
@@ -188,7 +188,13 @@ function saveGCSMessages(displayId, newMessages) {
   })
   .catch((err)=>{
     stats.newGCSErrors++;
-    console.log("Error saving messages", displayId, err, newMessages);
+
+    if(--retries > 0) {
+      return saveGCSMessages(displayId, newMessages, retries);
+    }
+    else {
+      console.log("Error saving messages", displayId, err, newMessages);
+    }
   });
 }
 
