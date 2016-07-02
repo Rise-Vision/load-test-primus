@@ -21,7 +21,7 @@ return storage.init()
 });
 
 function startPrimus() {
-  var primus = new Primus(server, { transformer: "SockJS", use_clock_offset: true });
+  var primus = new Primus(server, { transformer: "websockets", use_clock_offset: true });
 
   primus.use("emitter", emitter);
   primus.use("spark-latency", latency);

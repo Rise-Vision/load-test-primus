@@ -1,6 +1,6 @@
 var Primus = require("primus");
 var Socket = Primus.createSocket({
-  transformer: "SockJS",
+  transformer: "websockets",
   use_clock_offset: true,
   plugin: {
     "primus-emitter": require("primus-emitter"),
