@@ -1,24 +1,29 @@
 var fakeCore = require("./fake-core.js");
 var fakeDisplay = require("./fake-display.js");
 var argv = require("yargs")
-  .default({ from: 0, count: 10, newClientsPerSec: 100, msgPerSec: 10, offlinePct: 10, serverUrl: "http://messaging-server-instance-1:3000" })
+  .default({ from: 0, count: 10, newClientsPerSec: 100, msgPerSec: 10, offlinePct: 10, serverOnly: false, clientOnly: false, serverUrl: "http://messaging-server-instance-1:3000" })
   .argv;
 var serverUrl = argv.serverUrl;
 var displayIds = generateDisplayIds(argv.from, argv.count);
-var startedClients = 0;
-var clientDisplayIds = displayIds.filter(()=>{ return Math.random() < (100 - argv.offlinePct) / 100; });
-var clientStartupTimer = setInterval(function () {
-  if(startedClients < clientDisplayIds.length) {
-    for(var i = 0; i < argv.newClientsPerSec && startedClients < clientDisplayIds.length; i++, startedClients++) {
-      fakeDisplay.startDisplay(serverUrl, clientDisplayIds[startedClients]);
-    }
-  }
-  else {
-    clearInterval(clientStartupTimer);
-  }
-}, 1000);
 
-fakeCore.startServer(serverUrl, displayIds, argv.msgPerSec);
+if(!argv.serverOnly) {
+  var startedClients = 0;
+  var clientDisplayIds = displayIds.filter(()=>{ return Math.random() < (100 - argv.offlinePct) / 100; });
+  var clientStartupTimer = setInterval(function () {
+    if(startedClients < clientDisplayIds.length) {
+      for(var i = 0; i < argv.newClientsPerSec && startedClients < clientDisplayIds.length; i++, startedClients++) {
+        fakeDisplay.startDisplay(serverUrl, clientDisplayIds[startedClients]);
+      }
+    }
+    else {
+      clearInterval(clientStartupTimer);
+    }
+  }, 1000);
+}
+
+if(!argv.clientOnly) {
+  fakeCore.startServer(serverUrl, displayIds, argv.msgPerSec);
+}
 
 function generateDisplayIds(from, count) {
   var displayIds = [];

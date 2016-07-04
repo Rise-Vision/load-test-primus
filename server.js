@@ -7,7 +7,7 @@ var http = require("http");
 var fs = require("fs");
 var server = http.createServer();
 var storage = require("./storage.js");
-var displayServer = null;
+var displayServers = {};
 var displaysById = {};
 var displaysBySpark = {};
 var pendingMessages = {};
@@ -45,8 +45,8 @@ function startPrimus() {
 function registerPrimusEventListeners(primus) {
   primus.on("connection", function(spark) {
     spark.on("end", function() {
-      if(spark === displayServer) {
-        displayServer = null;
+      if(displayServers[spark.id]) {
+        delete displayServers[spark.id];
       }
       else if(displaysBySpark[spark.id]) {
         stats.clients--;
@@ -67,11 +67,7 @@ function registerPrimusEventListeners(primus) {
     });
 
     spark.on("server-init", function () {
-      if(displayServer) {
-        displayServer.end();
-      }
-
-      displayServer = spark;
+      displayServers[spark.id] = spark;
     });
 
     spark.on("display-init", function (data) {
