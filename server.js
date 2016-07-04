@@ -103,7 +103,7 @@ function registerPrimusEventListeners(primus) {
 function startStats() {
   setInterval(function () {
     var currStats = [
-      stats.clients, stats.newClients, stats.disconnectedClients, stats.unknownDisconnectedClients,
+      Date.now(), stats.clients, stats.newClients, stats.disconnectedClients, stats.unknownDisconnectedClients,
       stats.newErrors, stats.newGCSErrors, stats.sentMessages, stats.savedMessagesSent, stats.savedMessages
     ].join(",");
 
