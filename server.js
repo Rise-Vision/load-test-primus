@@ -1,3 +1,4 @@
+var cluster = require("cluster");
 var Primus = require("primus");
 var emitter = require("primus-emitter");
 var latency = require("primus-spark-latency");
@@ -25,14 +26,52 @@ var stats = {
   savedMessages: 0
 };
 
-return storage.init()
-.then(startPrimus)
-.then(registerPrimusEventListeners)
-.then(startStats)
-.then(startServer)
-.catch((err)=>{
-  console.log(err);
-});
+if(cluster.isMaster) {
+  var numWorkers = require("os").cpus().length;
+  var updateMasterStats = (message)=>{
+    if(message.stats) {
+      stats.clients += (message.stats.newClients - message.stats.disconnectedClients);
+      stats.newClients += message.stats.newClients;
+      stats.disconnectedClients += message.stats.disconnectedClients;
+      stats.unknownDisconnectedClients += message.stats.unknownDisconnectedClients;
+      stats.newErrors += message.stats.newErrors;
+      stats.newGCSErrors += message.stats.newGCSErrors;
+      stats.sentMessages += message.stats.sentMessages;
+      stats.savedMessagesSent += message.stats.savedMessagesSent;
+      stats.savedMessages += message.stats.savedMessages;
+    }
+  };
+
+  console.log("Master cluster setting up " + numWorkers + " workers...");
+
+  for(var i = 0; i < numWorkers; i++) {
+    var worker = cluster.fork();
+
+    worker.on("message", updateMasterStats);
+  }
+
+  cluster.on("online", function(worker) {
+    console.log("Worker " + worker.process.pid + " is online");
+  });
+
+  cluster.on("exit", function(worker, code, signal) {
+    console.log("Worker " + worker.process.pid + " died with code: " + code + ", and signal: " + signal);
+    console.log("Starting a new worker");
+    cluster.fork();
+  });
+
+  startStats();
+}
+else {
+  return storage.init()
+  .then(startPrimus)
+  .then(registerPrimusEventListeners)
+  .then(startStats)
+  .then(startServer)
+  .catch((err)=>{
+    console.log(err);
+  });
+}
 
 function startPrimus() {
   var primus = new Primus(server, { transformer: "uws", use_clock_offset: true });
@@ -99,12 +138,22 @@ function registerPrimusEventListeners(primus) {
 
 function startStats() {
   setInterval(function () {
-    var currStats = [
-      Date.now(), stats.clients, stats.newClients, stats.disconnectedClients, stats.unknownDisconnectedClients,
-      stats.newErrors, stats.newGCSErrors, stats.sentMessages, stats.savedMessagesSent, stats.savedMessages
-    ].join(",");
+    if(cluster.isMaster) {
+      var currStats = [
+        Date.now(), stats.clients, stats.newClients, stats.disconnectedClients, stats.unknownDisconnectedClients,
+        stats.newErrors, stats.newGCSErrors, stats.sentMessages, stats.savedMessagesSent, stats.savedMessages
+      ].join(",");
 
-    console.log(JSON.stringify(stats));
+      console.log(JSON.stringify(stats));
+
+      fs.appendFile("stats.csv", currStats + "\n", function (err) {
+        if(err) { console.log("Error saving stats", err); }
+      });
+    }
+    else {
+      console.log(process.pid, JSON.stringify(stats));
+      process.send({ stats: stats });
+    }
 
     stats.newClients = 0;
     stats.disconnectedClients = 0;
@@ -114,11 +163,7 @@ function startStats() {
     stats.sentMessages = 0;
     stats.savedMessagesSent = 0;
     stats.savedMessages = 0;
-
-    fs.appendFile("stats.csv", currStats + "\n", function (err) {
-      if(err) { console.log("Error saving stats", err); }
-    });
-  }, 5000);
+  }, cluster.isMaster ? 5000 : 1000);
 }
 
 function appendGCSMessage(displayId, message) {
@@ -196,6 +241,8 @@ function saveGCSMessages(displayId, newMessages, retries) {
 }
 
 function enqueueTask(displayId, task) {
+  return;
+
   if(pendingTasks[displayId]) {
     pendingTasks[displayId].push(task);
   }
