@@ -1,10 +1,11 @@
-var PORT = process.env.PORT || 3000;
-
 var Primus = require("primus");
 var emitter = require("primus-emitter");
 var latency = require("primus-spark-latency");
 var http = require("http");
 var fs = require("fs");
+var argv = require("yargs")
+  .default({ address: "localhost", port: 3000 })
+  .argv;
 var server = http.createServer();
 var storage = require("./storage.js");
 var displayServers = {};
@@ -225,7 +226,7 @@ function runNextTask(displayId) {
 }
 
 function startServer() {
-  server.listen(PORT, function() {
-    console.log("Running on http://localhost:3000");
+  server.listen(argv.port, argv.address, function() {
+    console.log("Running on http://" + server.address().address + ":" + server.address().port);
   });
 }
