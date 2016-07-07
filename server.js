@@ -5,7 +5,7 @@ var latency = require("primus-spark-latency");
 var http = require("http");
 var fs = require("fs");
 var argv = require("yargs")
-  .default({ address: "localhost", port: 3000 })
+  .default({ address: "localhost", port: 3000, workers: 6 })
   .argv;
 var server = http.createServer();
 var storage = require("./storage.js");
@@ -27,7 +27,7 @@ var stats = {
 };
 
 if(cluster.isMaster) {
-  var numWorkers = require("os").cpus().length;
+  var numWorkers = argv.workers;
   var updateMasterStats = (message)=>{
     if(message.stats) {
       stats.clients += (message.stats.newClients - message.stats.disconnectedClients);
@@ -151,7 +151,6 @@ function startStats() {
       });
     }
     else {
-      console.log(process.pid, JSON.stringify(stats));
       process.send({ stats: stats });
     }
 
