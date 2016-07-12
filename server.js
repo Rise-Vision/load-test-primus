@@ -14,6 +14,7 @@ var displaysById = {};
 var displaysBySpark = {};
 var pendingMessages = {};
 var pendingTasks = {};
+var displayIdsByWorker = {};
 var stats = {
   clients: 0,
   newClients: 0,
@@ -28,8 +29,30 @@ var stats = {
 
 if(cluster.isMaster) {
   var numWorkers = argv.workers;
-  var updateMasterStats = (message)=>{
-    if(message.stats) {
+
+  console.log("Master cluster setting up " + numWorkers + " workers...");
+
+  for(var i = 0; i < numWorkers; i++) {
+    cluster.fork();
+  }
+
+  cluster.on("message", (worker, message)=>{
+    if(message.connection) {
+      displayIdsByWorker[worker.id][message.connection.displayId] = true;
+    }
+    else if(message.disconnection) {
+      delete displayIdsByWorker[worker.id][message.disconnection.displayId];
+    }
+    else if(message.msg) {
+      // Select the worker connected to the displayId or, if none is, a random one which will store the message in GCS
+      let workers = Object.keys(displayIdsByWorker);
+      let workerId = workers.find((workerId)=>{
+        return displayIdsByWorker[workerId][message.msg.displayId];
+      }) || workers[Math.floor(Math.random() * workers.length)];
+
+      cluster.workers[workerId].send(message);
+    }
+    else if(message.stats) {
       stats.clients += (message.stats.newClients - message.stats.disconnectedClients);
       stats.newClients += message.stats.newClients;
       stats.disconnectedClients += message.stats.disconnectedClients;
@@ -40,24 +63,21 @@ if(cluster.isMaster) {
       stats.savedMessagesSent += message.stats.savedMessagesSent;
       stats.savedMessages += message.stats.savedMessages;
     }
-  };
-
-  console.log("Master cluster setting up " + numWorkers + " workers...");
-
-  for(var i = 0; i < numWorkers; i++) {
-    var worker = cluster.fork();
-
-    worker.on("message", updateMasterStats);
-  }
+  });
 
   cluster.on("online", function(worker) {
     console.log("Worker " + worker.process.pid + " is online");
+
+    displayIdsByWorker[worker.id] = {};
   });
 
   cluster.on("exit", function(worker, code, signal) {
     console.log("Worker " + worker.process.pid + " died with code: " + code + ", and signal: " + signal);
-    console.log("Starting a new worker");
-    cluster.fork();
+
+    delete displayIdsByWorker[worker.id];
+
+    var newWorker = cluster.fork();
+    console.log("Starting a new worker " + newWorker.process.pid);
   });
 
   startStats();
@@ -74,7 +94,7 @@ else {
 }
 
 function startPrimus() {
-  var primus = new Primus(server, { transformer: "uws", use_clock_offset: true });
+  var primus = new Primus(server, { transformer: "uws", use_clock_offset: true, iknowclusterwillbreakconnections: true });
 
   primus.use("emitter", emitter);
   primus.use("spark-latency", latency);
@@ -83,6 +103,21 @@ function startPrimus() {
 }
 
 function registerPrimusEventListeners(primus) {
+  process.on("message", (message)=>{
+    if(message.msg) {
+      let data = message.msg;
+
+      if(displaysById[data.displayId]) {
+        stats.sentMessages++;
+        displaysById[data.displayId].send("message", data.message);
+      }
+      else {
+        stats.savedMessages++;
+        appendGCSMessage(data.displayId, data.message);
+      }
+    }
+  });
+
   primus.on("connection", function(spark) {
     spark.on("end", function() {
       if(displayServers[spark.id]) {
@@ -96,6 +131,7 @@ function registerPrimusEventListeners(primus) {
 
         delete displaysById[displayId];
         delete displaysBySpark[spark.id];
+        process.send({ disconnection: { displayId: displayId }});
       }
       else {
         stats.unknownDisconnectedClients++;
@@ -117,6 +153,7 @@ function registerPrimusEventListeners(primus) {
         displaysById[data.displayId] = spark;
         displaysBySpark[spark.id] = data.displayId;
 
+        process.send({ connection: { displayId: data.displayId }});
         enqueueTask(data.displayId, sendSavedMessages.bind(null, data.displayId, 3));
       }
     });
@@ -128,8 +165,7 @@ function registerPrimusEventListeners(primus) {
           displaysById[data.displayId].send("message", data.message);
         }
         else {
-          stats.savedMessages++;
-          appendGCSMessage(data.displayId, data.message);
+          process.send({ msg: data });
         }
       }
     });
@@ -240,8 +276,6 @@ function saveGCSMessages(displayId, newMessages, retries) {
 }
 
 function enqueueTask(displayId, task) {
-  return;
-
   if(pendingTasks[displayId]) {
     pendingTasks[displayId].push(task);
   }
