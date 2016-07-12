@@ -55,6 +55,7 @@ module.exports = {
       var options = {
         public: true,
         predefinedAcl: "publicRead",
+        validation: false,
         metadata: {
           contentType: "text/plain",
           cacheControl: "public, max-age=0, no-cache, no-store"

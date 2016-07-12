@@ -1,6 +1,6 @@
 var Primus = require("primus");
 var Socket = Primus.createSocket({
-  transformer: "SockJS",
+  transformer: "websockets",
   use_clock_offset: true,
   plugin: {
     "primus-emitter": require("primus-emitter"),
@@ -13,7 +13,9 @@ module.exports = {
     var client = new Socket(serverUrl);
     var messageCount = 0;
 
-    client.send("server-init", {});
+    client.on("open", ()=>{
+      client.send("server-init", {});
+    });
 
     setInterval(function () {
       var displayId = displayIds[Math.floor(Math.random() * displayIds.length)];
